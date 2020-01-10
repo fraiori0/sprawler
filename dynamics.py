@@ -12,6 +12,7 @@ n = 3
 # q10-qN		spine joint variable
 #       }
 # NOTE: q[0] = q0(t)
+
 q = me.dynamicsymbols('q:' + str(n + 10))
 qd = me.dynamicsymbols('qd:' + str(n + 10))
 #qd = me.dynamicsymbols('q:' + str(n + 10), level=1)	#defined with same name but different "level" attribute
@@ -19,9 +20,6 @@ qd = me.dynamicsymbols('qd:' + str(n + 10))
 #### NUMERICAL PARAMETERS AND SYMBOLS
 # LENGTH : girdle connection, arm, forearm, spine link
 l_g, l_a, l_f, l_s = symbols('l_g, l_a, l_f, l_s')
-#MASS : spine link, foot
-m_spine, m_contact = symbols('m_spine, m_contact')
-
 
 #### REFERENCE FRAMES DEFINITION AND ORIENTATION
 frames=[]
@@ -67,30 +65,94 @@ spine1_rf.set_ang_vel(girdle_rf, qd[10]*girdle_rf.z)
 frames.append(spine1_rf)
 
 #### POINTS
+points = []
+
 O = me.Point('O')	#origin of the inertial reference frame
 O.set_vel(inertial_rf, 0)
+points.append(O)
 
 G = me.Point('G')	#girdle center
 G.set_pos(O, q[0]*inertial_rf.x + q[1]*inertial_rf.y + q[2]*inertial_rf.z)
 G.set_vel(inertial_rf, qd[0]*inertial_rf.x + qd[1]*inertial_rf.y + qd[2]*inertial_rf.z)
-
+points.append(G)
 
 RG = me.Point('RG')
 RG.set_pos(G, -l_g*girdle_rf.y)
+RG.set_vel(girdle_rf, 0)
 RG.v2pt_theory(G, inertial_rf, girdle_rf)
+points.append(RG)
 
 RE = me.Point('RE')
 RE.set_pos(RG, l_a*armR_rf.x)
-RE.v2pt_theory(RG, inertial_rf, girdleR1_rf)
+RE.v2pt_theory(RG, inertial_rf, armR_rf)
+points.append(RE)
 
 RC = me.Point('RC')
 RC.set_pos(RE, -l_a*girdleR2_rf.x)
 RC.v2pt_theory(RE, inertial_rf, girdleR2_rf)
+points.append(RC)
+
+SG = me.Point.locatenew(G,'SG', -l_s*girdle_rf.x)
+SG.v2pt_theory(G, inertial_rf, girdle_rf)
+points.append(SG)
 
 S1 = me.Point('S1')	
+S1.set_pos(SG, -l_s*spine1_rf.x)
+S1.v2pt_theory(SG, inertial_rf, spine1_rf)
+points.append(S1)
+#print(S1.vel(inertial_rf))
 
+#### PARTICLES (Point masses are used instead of rigid body to simplify the model)
+#MASS : spine link, foot
+m_spine, m_contact = symbols('m_spine, m_contact')
 
+particles = []
 
-#frames = []
-#points = []
-#particles =[]
+g_p = me.Particle('g_p', G, m_spine)
+particles.append(g_p)
+rc_p = me.Particle('rc_p', RC, m_contact)
+particles.append(rc_p)
+sg_p = me.Particle('sg_p', SG, m_spine)
+particles.append(sg_p)
+s1_p = me.Particle('s1_p', S1, m_spine)
+particles.append(s1_p)
+
+#### FORCES
+# force = (point, vector)
+# torque = (reference frame, vector)
+
+#GRAVITY
+g = symbols('g')
+def apply_gravity_force (particle, inertial_reference_frame):
+	#this function assumes that a variable called 'g' exists and corresponds to a symbol representing gravity constant
+	force = (particle.point, -particle.mass*g*inertial_reference_frame.z)
+	return force
+
+gravity_forces = []
+for part in particles:
+	gravity_forces.append(apply_gravity_force(part, inertial_rf))
+#print(gravity_forces)
+
+#JOINT'S TORQUES
+# Internal torques need to be defined respecting Newton's third law,
+# so as one torque acting on the upper link and an opposite torque acting on the lower link
+joint_torques=[]
+t_RG0, t_RG1, t_RG2, t_RE, t_SG = symbols('t_RG0, t_RG1, t_RG2, t_RE, t_SG')
+
+joint_torques.append((girdle_rf, -t_RG0*girdle_rf.x))
+joint_torques.append((girdleR1_rf, t_RG0*girdleR1_rf.z))
+
+joint_torques.append((girdleR1_rf, -t_RG1*girdleR1_rf.z))
+joint_torques.append((girdleR2_rf, t_RG1*girdleR2_rf.z))
+
+joint_torques.append((girdleR2_rf, -t_RG2*girdleR2_rf.x))
+joint_torques.append((armR_rf, t_RG2*armR_rf.x))
+
+joint_torques.append((armR_rf, -t_RE*armR_rf.y))
+joint_torques.append((forearmR_rf, t_RE*forearmR_rf.z))
+
+joint_torques.append((girdle_rf, -t_SG*girdle_rf.z))
+joint_torques.append((spine1_rf, t_SG*spine1_rf.z))
+
+# ALL LOADS
+loads = [*gravity_forces, *joint_torques]
