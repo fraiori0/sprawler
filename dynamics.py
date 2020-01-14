@@ -1,5 +1,6 @@
 import sympy.physics.mechanics as me
 from sympy import symbols, simplify, sin, cos
+from sympy.physics.vector import dot
 from numpy import pi
 
 # Number of link that compose the body (not counting the girdle)
@@ -20,6 +21,7 @@ qd = me.dynamicsymbols('qd:' + str(n + 10))
 #### NUMERICAL PARAMETERS AND SYMBOLS
 # LENGTH : girdle connection, arm, forearm, spine link
 l_g, l_a, l_f, l_s = symbols('l_g, l_a, l_f, l_s')
+g = symbols('g')
 
 #### REFERENCE FRAMES DEFINITION AND ORIENTATION
 frames=[]
@@ -117,12 +119,14 @@ particles.append(sg_p)
 s1_p = me.Particle('s1_p', S1, m_spine)
 particles.append(s1_p)
 
+for part in particles:
+	part.potential_energy = part.mass * dot(part.point.pos_from(O), inertial_rf.z)
+
 #### FORCES
 # force = (point, vector)
 # torque = (reference frame, vector)
 
 #GRAVITY
-g = symbols('g')
 def apply_gravity_force (particle, inertial_reference_frame):
 	#this function assumes that a variable called 'g' exists and corresponds to a symbol representing gravity constant
 	force = (particle.point, -particle.mass*g*inertial_reference_frame.z)
@@ -156,3 +160,19 @@ joint_torques.append((spine1_rf, t_SG*spine1_rf.z))
 
 # ALL LOADS
 loads = [*gravity_forces, *joint_torques]
+
+#### Constraints
+
+#### Equations of motion
+# Kinetic Energy
+T = 0
+for part in particles:
+	T += part.kinetic_energy(inertial_rf)
+print(T)
+# Potential energy
+k = symbols('k') #stiffness of joint, later should be made a matrix, with different values for every joint
+U = 0
+for part in particles:
+	U += part.potential_energy
+ty(q*q)
+#U += k * dot(q,q)
